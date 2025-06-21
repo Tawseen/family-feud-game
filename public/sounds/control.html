@@ -1,0 +1,379 @@
+<!DOCTYPE html>
+<html lang="en" >
+<head>
+  <meta charset="UTF-8" />
+  <title>Family Feud Control Panel</title>
+  <script src="/socket.io/socket.io.js"></script>
+  <style>
+    body {
+      font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+      background: #1a1a2e;
+      color: #eaeaea;
+      margin: 0;
+      padding: 1rem;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      min-height: 100vh;
+      user-select: none;
+    }
+    h1 {
+      margin-bottom: 0.5rem;
+      font-weight: 700;
+      color: #00ffe7;
+      text-shadow: 0 0 6px #00ffe7;
+    }
+    select, button {
+      font-size: 1rem;
+      padding: 0.5rem 1rem;
+      margin: 0.5rem 0;
+      border-radius: 6px;
+      border: none;
+      cursor: pointer;
+      background: #0f3460;
+      color: #eaeaea;
+      box-shadow: 0 0 6px #0f3460;
+      transition: background 0.3s ease;
+    }
+    select:hover, button:hover {
+      background: #16213e;
+    }
+    .hidden {
+      display: none;
+    }
+    #categorySelect {
+      width: 250px;
+    }
+    .question-container {
+      margin-top: 1rem;
+      width: 100%;
+      max-width: 600px;
+      background: #16213e;
+      border-radius: 8px;
+      padding: 1rem;
+      box-shadow: 0 0 10px #0f3460;
+      animation: fadeIn 0.5s ease forwards;
+    }
+    .question-text {
+      font-size: 1.25rem;
+      font-weight: 700;
+      margin-bottom: 1rem;
+      text-align: center;
+      color: #00ffe7;
+      text-shadow: 0 0 4px #00ffe7;
+    }
+    .answers-list {
+      list-style: none;
+      padding: 0;
+      margin: 0;
+    }
+    .answer-item {
+      display: flex;
+      justify-content: space-between;
+      background: #0f3460;
+      margin-bottom: 0.5rem;
+      padding: 0.5rem 1rem;
+      border-radius: 6px;
+      cursor: pointer;
+      box-shadow: 0 0 5px #0f3460;
+      transition: background 0.3s ease;
+    }
+    .answer-item.revealed {
+      background: #00ffe7;
+      color: #16213e;
+      font-weight: 700;
+      box-shadow: 0 0 10px #00ffe7;
+    }
+    .answer-text {
+      flex-grow: 1;
+    }
+    .answer-points {
+      margin-left: 1rem;
+      font-weight: 700;
+    }
+    .scoreboard {
+      margin-top: 1rem;
+      display: flex;
+      justify-content: space-around;
+      max-width: 600px;
+      width: 100%;
+    }
+    .team {
+      background: #0f3460;
+      border-radius: 8px;
+      padding: 1rem 2rem;
+      box-shadow: 0 0 8px #0f3460;
+      text-align: center;
+      flex-grow: 1;
+      margin: 0 0.5rem;
+      user-select: text;
+    }
+    .team h2 {
+      margin: 0 0 0.5rem 0;
+      font-weight: 700;
+      color: #00ffe7;
+      text-shadow: 0 0 4px #00ffe7;
+    }
+    .score-value {
+      font-size: 2.5rem;
+      font-weight: 900;
+      color: #eaeaea;
+      text-shadow: 0 0 8px #00ffe7;
+    }
+    .controls {
+      margin-top: 1rem;
+      max-width: 600px;
+      display: flex;
+      justify-content: center;
+      gap: 1rem;
+    }
+    button.strike-btn {
+      background: #ff3860;
+      box-shadow: 0 0 8px #ff3860;
+    }
+    button.strike-btn:hover {
+      background: #ff1a40;
+    }
+    button.reset-btn {
+      background: #008000;
+      box-shadow: 0 0 8px #008000;
+    }
+    button.reset-btn:hover {
+      background: #006600;
+    }
+
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(10px);}
+      to { opacity: 1; transform: translateY(0);}
+    }
+  </style>
+</head>
+<body>
+  <h1>Family Feud Control Panel</h1>
+
+  <label for="categorySelect">Select Category:</label>
+  <select id="categorySelect">
+    <option value="" disabled selected>Loading categories...</option>
+  </select>
+  <button id="startRoundBtn" disabled>Start Round</button>
+
+  <div id="gameUI" class="hidden">
+    <div class="question-container" id="questionContainer">
+      <div class="question-text" id="questionText"></div>
+      <ul class="answers-list" id="answersList"></ul>
+    </div>
+
+    <div class="scoreboard">
+      <div class="team" id="teamA">
+        <h2 contenteditable="true" id="teamAName">Team A</h2>
+        <div class="score-value" id="teamAScore">0</div>
+      </div>
+      <div class="team" id="teamB">
+        <h2 contenteditable="true" id="teamBName">Team B</h2>
+        <div class="score-value" id="teamBScore">0</div>
+      </div>
+    </div>
+
+    <div class="controls">
+      <button class="strike-btn" id="strikeBtn">Add Strike</button>
+      <button class="reset-btn" id="resetBtn">Reset Round</button>
+    </div>
+  </div>
+
+  <script>
+    const socket = io();
+
+    const categorySelect = document.getElementById("categorySelect");
+    const startRoundBtn = document.getElementById("startRoundBtn");
+    const gameUI = document.getElementById("gameUI");
+    const questionText = document.getElementById("questionText");
+    const answersList = document.getElementById("answersList");
+    const teamAName = document.getElementById("teamAName");
+    const teamBName = document.getElementById("teamBName");
+    const teamAScore = document.getElementById("teamAScore");
+    const teamBScore = document.getElementById("teamBScore");
+    const strikeBtn = document.getElementById("strikeBtn");
+    const resetBtn = document.getElementById("resetBtn");
+
+    let currentGameState = null;
+    let currentAnswers = [];
+    let revealedAnswers = new Set();
+
+    // Load categories from server
+    async function loadCategories() {
+      try {
+        const res = await fetch("/categories");
+        const categories = await res.json();
+
+        categorySelect.innerHTML = '<option value="" disabled selected>Select category</option>';
+        categories.forEach(cat => {
+          const option = document.createElement("option");
+          option.value = cat;
+          option.textContent = cat;
+          categorySelect.appendChild(option);
+        });
+        startRoundBtn.disabled = false;
+      } catch (e) {
+        alert("Failed to load categories");
+      }
+    }
+
+    function renderQuestion() {
+      if (!currentGameState) return;
+      const idx = currentGameState.currentQuestionIndex;
+      const questionObj = currentGameState.questions[idx];
+
+      if (!questionObj) {
+        questionText.textContent = "No question loaded";
+        answersList.innerHTML = "";
+        return;
+      }
+
+      questionText.textContent = questionObj.question;
+
+      answersList.innerHTML = "";
+      revealedAnswers.clear();
+      currentAnswers = questionObj.answers;
+
+      questionObj.answers.forEach((answer, i) => {
+        const li = document.createElement("li");
+        li.className = "answer-item";
+        li.dataset.index = i;
+
+        const textSpan = document.createElement("span");
+        textSpan.className = "answer-text";
+        textSpan.textContent = answer.text;
+
+        const pointsSpan = document.createElement("span");
+        pointsSpan.className = "answer-points";
+        pointsSpan.textContent = answer.points;
+
+        li.appendChild(textSpan);
+        li.appendChild(pointsSpan);
+
+        // Reveal answer toggle on click
+        li.addEventListener("click", () => {
+          if (li.classList.contains("revealed")) return;
+          li.classList.add("revealed");
+          revealedAnswers.add(i);
+
+          // Add points to the current team (simple example: add to Team A)
+          let newScore = currentGameState.teamAScore + answer.points;
+          currentGameState.teamAScore = newScore;
+          updateScoresUI();
+          emitGameStateUpdate();
+
+          // TODO: Later add option to choose which team gets points
+        });
+
+        answersList.appendChild(li);
+      });
+    }
+
+    function updateScoresUI() {
+      teamAScore.textContent = currentGameState.teamAScore;
+      teamBScore.textContent = currentGameState.teamBScore;
+      teamAName.textContent = currentGameState.teamAName;
+      teamBName.textContent = currentGameState.teamBName;
+    }
+
+    // Emit updated game state to server
+    function emitGameStateUpdate() {
+      socket.emit("updateGameState", {
+        teamAScore: currentGameState.teamAScore,
+        teamBScore: currentGameState.teamBScore,
+        teamAName: currentGameState.teamAName,
+        teamBName: currentGameState.teamBName,
+        strikes: currentGameState.strikes,
+      });
+    }
+
+    // Start round handler
+    startRoundBtn.addEventListener("click", async () => {
+      const selectedCategory = categorySelect.value;
+      if (!selectedCategory) return alert("Please select a category");
+
+      // Fetch questions for category
+      const res = await fetch(`/questions?category=${encodeURIComponent(selectedCategory)}`);
+      const questions = await res.json();
+
+      if (!questions.length) {
+        alert("No questions found for this category");
+        return;
+      }
+
+      currentGameState = {
+        category: selectedCategory,
+        questions,
+        currentQuestionIndex: 0,
+        teamAScore: 0,
+        teamBScore: 0,
+        teamAName: "Team A",
+        teamBName: "Team B",
+        strikes: 0,
+        roundActive: true,
+      };
+
+      socket.emit("startRound", {
+        category: selectedCategory,
+        questions,
+      });
+
+      gameUI.classList.remove("hidden");
+      renderQuestion();
+      updateScoresUI();
+    });
+
+    // Strike button
+    strikeBtn.addEventListener("click", () => {
+      if (!currentGameState) return;
+      currentGameState.strikes = (currentGameState.strikes || 0) + 1;
+      socket.emit("updateGameState", { strikes: currentGameState.strikes });
+      alert(`Strikes: ${currentGameState.strikes}`);
+    });
+
+    // Reset round
+    resetBtn.addEventListener("click", () => {
+      if (!currentGameState) return;
+      currentGameState.strikes = 0;
+      currentGameState.teamAScore = 0;
+      currentGameState.teamBScore = 0;
+      currentGameState.currentQuestionIndex = 0;
+      revealedAnswers.clear();
+
+      socket.emit("updateGameState", {
+        strikes: 0,
+        teamAScore: 0,
+        teamBScore: 0,
+        currentQuestionIndex: 0,
+      });
+
+      renderQuestion();
+      updateScoresUI();
+    });
+
+    // Editable team names update on blur
+    teamAName.addEventListener("blur", () => {
+      if (!currentGameState) return;
+      currentGameState.teamAName = teamAName.textContent.trim() || "Team A";
+      emitGameStateUpdate();
+    });
+    teamBName.addEventListener("blur", () => {
+      if (!currentGameState) return;
+      currentGameState.teamBName = teamBName.textContent.trim() || "Team B";
+      emitGameStateUpdate();
+    });
+
+    // Listen to gameState updates from server (in case of multi-control clients)
+    socket.on("gameState", (state) => {
+      currentGameState = state;
+      if (!gameUI.classList.contains("hidden")) {
+        renderQuestion();
+        updateScoresUI();
+      }
+    });
+
+    loadCategories();
+  </script>
+</body>
+</html>
